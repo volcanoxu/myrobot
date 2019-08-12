@@ -22,12 +22,13 @@
 #define CLASSIC6DOF_L_WT 0.100f
 
 static float classic6dof_DH[6][4] = {
-	{	0.0f,			CLASSIC6DOF_L_BS,	CLASSIC6DOF_D_BS,	-(float)M_PI_2	},
-	{	-(float)M_PI_2,	0.0f,				CLASSIC6DOF_L_SE,	0.0f			},
-	{	 (float)M_PI_2,	CLASSIC6DOF_D_EW,	0.0f,				 (float)M_PI_2	},
-	{	0.0f,			CLASSIC6DOF_L_EW,	0.0f,				-(float)M_PI_2	},
-	{	0.0f,			0.0f,				0.0f,				 (float)M_PI_2	},
-	{	0.0f,			CLASSIC6DOF_L_WT,	0.0f,				0.0f			}
+	//	|home Rz 2		|d Tz 1				|a Tx 3						|alpha Rx 4
+	{	0.0f,			CLASSIC6DOF_L_BS,	CLASSIC6DOF_D_BS,			-(float)M_PI_2	},
+	{	-(float)M_PI_2,	0.0f,				CLASSIC6DOF_L_SE,			0.0f			},
+	{	 (float)M_PI_2,	0.0f,				-(float)CLASSIC6DOF_D_EW,	(float)M_PI_2	},
+	{	0.0f,			CLASSIC6DOF_L_EW,	0.0f,						-(float)M_PI_2	},
+	{	0.0f,			0.0f,				0.0f,				 		(float)M_PI_2	},
+	{	0.0f,			CLASSIC6DOF_L_WT,	0.0f,						0.0f			}
 }; // home, d, a, alpha
 
 static float L1_bs[3] =	{	 CLASSIC6DOF_D_BS,	-CLASSIC6DOF_L_BS,	0.0f				};
@@ -96,12 +97,13 @@ void classic6dofForKine(float* q_, Kine6d* pose_)
 	float cosa, sina;
 	float d, a;
 	float P06[6];
-	float R06[9];
-	float R[6][9];
-	float R02[9];
-	float R03[9];
-	float R04[9];
-	float R05[9];
+	float R06[16];
+	float R[6][16];
+	float R02[16];
+	float R03[16];
+	float R04[16];
+	float R05[16];
+	float R_tem[9];
 	float L0_bs[3];
 	float L0_se[3];
 	float L0_ew[3];
@@ -118,30 +120,34 @@ void classic6dofForKine(float* q_, Kine6d* pose_)
 		d = classic6dof_DH[i][1];
 		a = classic6dof_DH[i][2];
 
-		R[i][0] = cosq; R[i][1] = -cosa * sinq; R[i][2] =  sina * sinq;
-		R[i][3] = sinq; R[i][4] =  cosa * cosq; R[i][5] = -sina * cosq;
-		R[i][6] = 0.0f; R[i][7] =  sina;        R[i][8] =  cosa;
+		R[i][0] = cosq; R[i][1] = -cosa * sinq; R[i][2] =  sina * sinq; R[i][3]=a*cosq;
+		R[i][4] = sinq; R[i][5] =  cosa * cosq; R[i][6] = -sina * cosq; R[i][7]=a*sinq;
+		R[i][8] = 0.0f; R[i][9] =  sina;        R[i][10] =  cosa;		R[i][11]=d;
+		R[i][12]=0.0f;	R[i][13]=0.0f;			R[i][14]=0.0f;			R[i][15]=1.0f;
 	}
 
-	matMultiply(R[0], R[1], R02, 3, 3, 3);
-	matMultiply(R02 , R[2], R03, 3, 3, 3);
-	matMultiply(R03 , R[3], R04, 3, 3, 3);
-	matMultiply(R04 , R[4], R05, 3, 3, 3);
-	matMultiply(R05 , R[5], R06, 3, 3, 3);
+	matMultiply(R[0], R[1], R02, 4, 4, 4);
+	matMultiply(R02 , R[2], R03, 4, 4, 4);
+	matMultiply(R03 , R[3], R04, 4, 4, 4);
+	matMultiply(R04 , R[4], R05, 4, 4, 4);
+	matMultiply(R05 , R[5], R06, 4, 4, 4);
 
-	matMultiply(R[0], L1_bs, L0_bs, 3, 3, 1);
-	matMultiply(R02 , L2_se, L0_se, 3, 3, 1);
-	matMultiply(R03 , L3_ew, L0_ew, 3, 3, 1);
-	matMultiply(R06 , L6_wt, L0_wt, 3, 3, 1);
+	//matMultiply(R[0], L1_bs, L0_bs, 3, 3, 1);
+	//matMultiply(R02 , L2_se, L0_se, 3, 3, 1);
+	//matMultiply(R03 , L3_ew, L0_ew, 3, 3, 1);
+	//matMultiply(R06 , L6_wt, L0_wt, 3, 3, 1);
 
-	for (i = 0; i < 3; i++) {
-		P06[i] = L0_bs[i] + L0_se[i] + L0_ew[i] + L0_wt[i];
-	}
-	matRotMatToFixedAngle(R06, &P06[3]);
+	//for (i = 0; i < 3; i++) {
+	//	P06[i] = L0_bs[i] + L0_se[i] + L0_ew[i] + L0_wt[i];
+	//}
+	R_tem[0]=R06[0];R_tem[1]=R06[1];R_tem[2]=R06[2];
+	R_tem[3]=R06[4];R_tem[4]=R06[5];R_tem[5]=R06[6];
+	R_tem[6]=R06[8];R_tem[7]=R06[9];R_tem[8]=R06[10];
+	matRotMatToFixedAngle(R_tem, &P06[3]);
 
-	pose_->X = P06[0];
-	pose_->Y = P06[1];
-	pose_->Z = P06[2];
+	pose_->X = R06[3];
+	pose_->Y = R06[7];
+	pose_->Z = R06[11];
 	pose_->A = P06[3];
 	pose_->B = P06[4];
 	pose_->C = P06[5];
