@@ -1,0 +1,1 @@
+/usr/bin/cc    -Wl,--enable-auto-import CMakeFiles/kine6_classic.dir/main.c.o CMakeFiles/kine6_classic.dir/Classic6dofKine.c.o  -o kine6_classic.exe -Wl,--out-implib,libkine6_classic.dll.a -Wl,--major-image-version,0,--minor-image-version,0  -lm 

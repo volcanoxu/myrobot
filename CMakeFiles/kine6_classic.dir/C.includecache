@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/Administrator/robotics/myrobot/Classic6dofKine.c
+Classic6dofKine.h
+/home/Administrator/robotics/myrobot/Classic6dofKine.h
+string.h
+-
+math.h
+-
+
+/home/Administrator/robotics/myrobot/Classic6dofKine.h
+
+/home/Administrator/robotics/myrobot/main.c
+stdlib.h
+-
+stdio.h
+-
+string.h
+-
+Classic6dofKine.h
+/home/Administrator/robotics/myrobot/Classic6dofKine.h
+

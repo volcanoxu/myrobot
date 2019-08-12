@@ -1,0 +1,3 @@
+/home/Administrator/robotics/myrobot/CMakeFiles/edit_cache.dir
+/home/Administrator/robotics/myrobot/CMakeFiles/kine6_classic.dir
+/home/Administrator/robotics/myrobot/CMakeFiles/rebuild_cache.dir
