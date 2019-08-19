@@ -13,11 +13,11 @@ int main()
 	char ch = '\0';
 	int i;
 
-	pose.fgR = 0;        //需要去除的东西
+	pose.fgR = 0; //用来表示旋转矩阵是否求出
 
 	classic6dofForKine(q0, &pose);
 	printf("FK(q0)  :=< %.6f, %.6f, %.6f, %.6f, %.6f, %.6f >\n", pose.X, pose.Y, pose.Z, pose.A, pose.B, pose.C);
-
+	
 	while (1) {
 		printf("quit 'q' or continue 'c' ?");
 		//fflush(stdin);
@@ -46,7 +46,7 @@ int main()
 			printf("FK(q[%d]):=< %.6f, %.6f, %.6f, %.6f, %.6f, %.6f >\n", i, pose.X, pose.Y, pose.Z, pose.A, pose.B, pose.C);
 		}
 
-		memcpy(q_last, q, 6*sizeof(float));
+		memcpy(q_last, q, 6*sizeof(float)); //q_last用来记录上次计算的角度值q
 	}
 	//system("pause");
 	return 0;

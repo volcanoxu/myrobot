@@ -13,6 +13,8 @@ string.h
 -
 math.h
 -
+stdio.h
+-
 
 /home/Administrator/robotics/myrobot/Classic6dofKine.h
 

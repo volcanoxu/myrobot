@@ -4,6 +4,7 @@
 #endif
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 
 #define sqrtf(X) (float)sqrt(X)
 #define sinf(X) (float)sin(X)
@@ -14,18 +15,33 @@
 #define atan2f(Y, X) (float)atan2(Y, X)
 
 
-#define CLASSIC6DOF_L_BS 0.100f
-#define CLASSIC6DOF_D_BS 0.050f
-#define CLASSIC6DOF_L_SE 0.340f
-#define CLASSIC6DOF_L_EW 0.360f
-#define CLASSIC6DOF_D_EW 0.030f
-#define CLASSIC6DOF_L_WT 0.100f
+#define CLASSIC6DOF_L_BS 430.00f    //机器人尺寸
+#define CLASSIC6DOF_D_BS 150.00f
+#define CLASSIC6DOF_L_SE 447.00f
+#define CLASSIC6DOF_L_EW 392.00f
+#define CLASSIC6DOF_D_EW 130.00f
+#define CLASSIC6DOF_L_WT 100.00f
+
+#define LIMIT_MAX_1 160		//机器人每个轴的限位
+#define LIMIT_MIN_1 -160
+#define LIMIT_MAX_2 150
+#define LIMIT_MIN_2 -65
+#define LIMIT_MAX_3 75
+#define LIMIT_MIN_3 -90
+#define LIMIT_MAX_4 180
+#define LIMIT_MIN_4 -180
+#define LIMIT_MAX_5 160
+#define LIMIT_MIN_5 -160
+#define LIMIT_MAX_6 180
+#define LIMIT_MIN_6 -180
+
+
 
 static float classic6dof_DH[6][4] = {
 	//	|home Rz 2		|d Tz 1				|a Tx 3						|alpha Rx 4
 	{	0.0f,			CLASSIC6DOF_L_BS,	CLASSIC6DOF_D_BS,			-(float)M_PI_2	},
 	{	-(float)M_PI_2,	0.0f,				CLASSIC6DOF_L_SE,			0.0f			},
-	{	 (float)M_PI_2,	0.0f,				-(float)CLASSIC6DOF_D_EW,	(float)M_PI_2	},
+	{	(float)M_PI_2,	0.0f,				-(float)CLASSIC6DOF_D_EW,	(float)M_PI_2	},
 	{	0.0f,			CLASSIC6DOF_L_EW,	0.0f,						-(float)M_PI_2	},
 	{	0.0f,			0.0f,				0.0f,				 		(float)M_PI_2	},
 	{	0.0f,			CLASSIC6DOF_L_WT,	0.0f,						0.0f			}
@@ -54,8 +70,9 @@ static void matMultiply(float* M1, float* M2, float* M, int m, int l, int n)
 
 static void matRotMatToFixedAngle(float* R, float* fa)
 {
+	//规定旋转角度的范围是(-M_PI,M_PI],范围不应该超过这个值，这个仅仅代表
 	float A, B, C, cb;
-	if (fabs(R[6]) >= 1.0 - 0.0001) {
+	if (fabs(R[6]) >= 1.0 - 0.0001) {   //这种情况cos(fa[1])=1 or -1
 		if (R[6] < 0) {
 			A = 0.0f;
 			B =  (float)M_PI_2;
@@ -71,14 +88,14 @@ static void matRotMatToFixedAngle(float* R, float* fa)
 		A = atan2f(R[3] / cb, R[0] / cb);
 		C = atan2f(R[7] / cb, R[8] / cb);
 	}
-	fa[0] = C;
-	fa[1] = B;
-	fa[2] = A;
+	fa[0] = C;	//rotate Axis X
+	fa[1] = B;	//rotate Axis Y
+	fa[2] = A;	//rotate Axis Z
 }
 static void matFixedAngleToRotMat(float* fa, float* R)
 {
-	float ca, cb, cc, sa, sb, sc;
-	cc = cosf(fa[0]);
+	float ca, cb, cc, sa, sb, sc; //使用的是RPY的方法，先绕x roll旋转fa[2] gamma,然后是绕Y pitch 上下俯仰角f[1] beta，
+	cc = cosf(fa[0]);			  //最后是绕Z yaw偏转角f[0],gamma
 	cb = cosf(fa[1]);
 	ca = cosf(fa[2]);
 	sc = sinf(fa[0]);
@@ -151,11 +168,11 @@ void classic6dofForKine(float* q_, Kine6d* pose_)
 	pose_->A = P06[3];
 	pose_->B = P06[4];
 	pose_->C = P06[5];
-	memcpy(pose_->R, R06, 9*sizeof(float));
+	memcpy(pose_->R, R06, 16*sizeof(float));
 }
 
-void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
-{
+void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last是上一次的位置信息，根据上次的位置信息和现在要求的位置pose
+{																		//来求取八组解
 	static float l_se_2 = CLASSIC6DOF_L_SE * CLASSIC6DOF_L_SE;
 	static float l_se = CLASSIC6DOF_L_SE;
 	static float l_ew_2 = CLASSIC6DOF_L_EW * CLASSIC6DOF_L_EW + CLASSIC6DOF_D_EW * CLASSIC6DOF_D_EW;
@@ -165,14 +182,15 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 	float qs[2];
 	float qa[2][2];
 	float qw[2][3];
+	
 	float cosqs, sinqs;
 	float cosqa[2], sinqa[2];
 	float cosqw, sinqw;
-	float P06[6];
-	float R06[9];
-	float P0_w[3];
+	float P06[6];   //记录末端位姿
+	float R06[9];	//记录旋转矩阵
+	float P0_w[3];	//记录去除Lwt段后，剩余部分的XYZ坐标值
 	float P1_w[3];
-	float L0_wt[3];
+	float L0_wt[3];  //Lwt段在基座标下的坐标值
 	float L1_sw[3];
 	float R10[9];
 	float R31[9];
@@ -180,7 +198,7 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 	float R36[9];
 	float l_sw_2, l_sw, atan_a, acos_a, acos_e;
 
-	int ind_arm, ind_elbow, ind_wrist;
+	int ind_arm, ind_elbow, ind_wrist; //和arm elbow wrist相关的索引变量，和三个转动关节相关
 	int i;
 
 	if (0 == l_ew) {
@@ -191,7 +209,7 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 	P06[0] = pose_->X;
 	P06[1] = pose_->Y;
 	P06[2] = pose_->Z;
-	if (0 == pose_->fgR) {
+	if (0 == pose_->fgR) {    //fgR是标志位，用来表示pose_->R是否求出
 		P06[3] = pose_->A;
 		P06[4] = pose_->B;
 		P06[5] = pose_->C;
@@ -200,55 +218,57 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 		memcpy(R06, pose_->R, 9*sizeof(float));
 	}
 	for (i = 0; i < 2; i++) {
-		qs[i] = q_last_[0];
-		qa[i][0] = q_last_[1]; qa[i][1] = q_last_[2];
-		qw[i][0] = q_last_[3]; qw[i][1] = q_last_[4]; qw[i][2] = q_last_[5];
+		qs[i] = q_last_[0]; //第一个关节角
+		qa[i][0] = q_last_[1]; qa[i][1] = q_last_[2]; //第二、三个角度值
+		qw[i][0] = q_last_[3]; qw[i][1] = q_last_[4]; qw[i][2] = q_last_[5]; //第四、五、六关节的关节角
 	}
 	// q1 solution pair ///////////
-	matMultiply(R06, L6_wt, L0_wt, 3, 3, 1);
+	matMultiply(R06, L6_wt, L0_wt, 3, 3, 1);  //求出Lwt段在基座标系下的投影
 	for (i = 0; i < 3; i++) {
-		P0_w[i] = P06[i] - L0_wt[i];
+		P0_w[i] = P06[i] - L0_wt[i];   //都要以基座标作为参考系，每段在基座标系下的投影之和就是最后TCP点的坐标
 	}
-	if (sqrt(P0_w[0]*P0_w[0] + P0_w[1]*P0_w[1]) <= 0.000001) {
-		qs[0] = q_last_[0]; // right arm
+	if (sqrt(P0_w[0]*P0_w[0] + P0_w[1]*P0_w[1]) <= 0.000001) { //除去Lwt段之后剩余部分的坐标X、Y=0，仅剩Z不为0
+		qs[0] = q_last_[0]; // right arm 
 		qs[1] = q_last_[0]; // left arm
 		for (i = 0; i < 4; i++) {
 			q_->sol_flag[0 + i][0] = -1;
 			q_->sol_flag[4 + i][0] = -1;
 		}
 	} else {
-		qs[0] = atan2f( P0_w[1],  P0_w[0]); // right arm
-		qs[1] = atan2f(-P0_w[1], -P0_w[0]); // left arm
+		qs[0] = atan2f( P0_w[1],  P0_w[0]); // right arm   用来标识方向角，两个对称的方向角
+		qs[1] = atan2f(-P0_w[1], -P0_w[0]); // left arm    Axis1转动的两个对称的方位角，理论上都可以达到效果
 		for (i = 0; i < 4; i++) {
 			q_->sol_flag[0 + i][0] =  1;
 			q_->sol_flag[4 + i][0] =  1;
 		}
 	}
 	// two arm config. ////////////
-	for (ind_arm = 0; ind_arm < 2; ind_arm++) {
-		// q2, q3 solution pair ///
-		cosqs = cosf(qs[ind_arm] + classic6dof_DH[0][0]);
+	for (ind_arm = 0; ind_arm < 2; ind_arm++) {     //对应上面两种情况，Axis1两种对称的位置。
+		// q2, q3 solution pair ///                 //三个循环的嵌套，从最外层的arm->elbow->wrist，相当于穷举，每个转动轴都有两个方向
+		cosqs = cosf(qs[ind_arm] + classic6dof_DH[0][0]); 
 		sinqs = sinf(qs[ind_arm] + classic6dof_DH[0][0]);
 
-		R10[0] =  cosqs; R10[1] = sinqs; R10[2] =  0.0f;
-		R10[3] =   0.0f; R10[4] =  0.0f; R10[5] = -1.0f;
+		R10[0] =  cosqs; R10[1] = sinqs; R10[2] =  0.0f;   //这是一个变基函数，将P0_w->P1_w，即将基地坐标系有零（基座标系）
+		R10[3] =   0.0f; R10[4] =  0.0f; R10[5] = -1.0f;	//变到{1}joint1。这样就能做坐标系{1}下进行加减运算
 		R10[6] = -sinqs; R10[7] = cosqs; R10[8] =  0.0f;
 
-		matMultiply(R10, P0_w, P1_w, 3, 3, 1);
+		matMultiply(R10, P0_w, P1_w, 3, 3, 1);   //这个R10是有问题的，为什么求了一个转置呢？？？
+		
 		for (i = 0; i < 3; i++) {
-			L1_sw[i] = P1_w[i] - L1_bs[i];
+			L1_sw[i] = P1_w[i] - L1_bs[i];   //把Lbs和dbs减去  L1_bs就是在坐标系{1}，原点和基座标系重合是，LBS和dbs组成的系统末端在{1}下的坐标
 		}
 		l_sw_2 = L1_sw[0]*L1_sw[0] + L1_sw[1]*L1_sw[1];
 		l_sw = sqrtf(l_sw_2);
 
-		if			(fabs(l_se + l_ew - l_sw) <= 0.000001) {
-			qa[0][0] = atan2f(L1_sw[1], L1_sw[0]);
-			qa[1][0] = qa[0][0];
-			qa[0][1] = 0.0f;
-			qa[1][1] = 0.0f;
-			if (l_sw > l_se + l_ew) {
+		if(fabs(l_se + l_ew - l_sw) <= 0.000001) {   //在一条直线上
+			qa[0][0] = atan2f(L1_sw[1], L1_sw[0]);   //第二个关节角度
+			qa[1][0] = qa[0][0];                     //第二个关节的角度
+			printf("volcano\n");
+			qa[0][1] = 0.0f+atan_e;						 //修改过XXXX   第三个关节的角度  这个应该是有问题的？？？
+			qa[1][1] = 0.0f+atan_e;						 //第三个关节的角度
+			if (l_sw > l_se + l_ew) {                //为什么还是有大小的问题？？为什么还要区分大小？？
 				for (i = 0; i < 2; i++) {
-					q_->sol_flag[4*ind_arm + 0 + i][1] = 0;
+					q_->sol_flag[4*ind_arm + 0 + i][1] = 0;  //根据ind_arm分成两组，每组有四个解，一共是八个解
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 0;
 				}
 			} else {
@@ -257,10 +277,10 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 1;
 				}
 			}
-		} else if	(fabs(l_sw - fabs(l_se - l_ew)) <= 0.000001) {
+		} else if(fabs(l_sw - fabs(l_se - l_ew)) <= 0.000001) {   //这是另一种在一条直线上的情况
 			qa[0][0] = atan2f(L1_sw[1], L1_sw[0]);
 			qa[1][0] = qa[0][0];
-			if (0 == ind_arm) { // right arm
+			if (0 == ind_arm) { // right arm   要根据一轴的情况来确定3轴的角度。
 				qa[0][1] =  (float)M_PI; // above elbow
 				qa[1][1] = -(float)M_PI; // below elbow
 			} else { // /////// // left arm
@@ -278,7 +298,7 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_)
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 1;
 				}
 			}
-		} else {
+		} else {     //正常的不在一条直线上的情况
 			atan_a = atan2f(L1_sw[1], L1_sw[0]);
 			acos_a = 0.5f*(l_se_2 + l_sw_2 - l_ew_2) / (l_se*l_sw);
 			if	(acos_a >=  1.0f) acos_a = 0.0f;
