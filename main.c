@@ -13,7 +13,7 @@ int main()
 	char ch = '\0';
 	int i;
 
-	pose.fgR = 0;
+	pose.fgR = 0;        //需要去除的东西
 
 	classic6dofForKine(q0, &pose);
 	printf("FK(q0)  :=< %.6f, %.6f, %.6f, %.6f, %.6f, %.6f >\n", pose.X, pose.Y, pose.Z, pose.A, pose.B, pose.C);
