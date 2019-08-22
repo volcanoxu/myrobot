@@ -189,7 +189,7 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 	float P06[6];   //记录末端位姿
 	float R06[9];	//记录旋转矩阵
 	float P0_w[3];	//记录去除Lwt段后，剩余部分的XYZ坐标值
-	float P1_w[3];
+	float P1_w[3];	//记录在坐标系{1}下某段的坐标系
 	float L0_wt[3];  //Lwt段在基座标下的坐标值
 	float L1_sw[3];
 	float R10[9];
@@ -217,26 +217,26 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 	} else {
 		memcpy(R06, pose_->R, 9*sizeof(float));
 	}
-	for (i = 0; i < 2; i++) {
+	for (i = 0; i < 2; i++) {  //记录了两组解
 		qs[i] = q_last_[0]; //第一个关节角
 		qa[i][0] = q_last_[1]; qa[i][1] = q_last_[2]; //第二、三个角度值
 		qw[i][0] = q_last_[3]; qw[i][1] = q_last_[4]; qw[i][2] = q_last_[5]; //第四、五、六关节的关节角
 	}
 	// q1 solution pair ///////////
-	matMultiply(R06, L6_wt, L0_wt, 3, 3, 1);  //求出Lwt段在基座标系下的投影
+	matMultiply(R06, L6_wt, L0_wt, 3, 3, 1);  //将{6}和Lwt的原点与起始点都平移到基座标{0}的原点，L6_wt是Lwt在坐标系{6}下的投影，通过R06求出Lwt在基座标系{0}下的投影坐标L0_wt。
 	for (i = 0; i < 3; i++) {
 		P0_w[i] = P06[i] - L0_wt[i];   //都要以基座标作为参考系，每段在基座标系下的投影之和就是最后TCP点的坐标
 	}
 	if (sqrt(P0_w[0]*P0_w[0] + P0_w[1]*P0_w[1]) <= 0.000001) { //除去Lwt段之后剩余部分的坐标X、Y=0，仅剩Z不为0
-		qs[0] = q_last_[0]; // right arm 
+		qs[0] = q_last_[0]; // right arm   出现这种情况时，1轴不动，所以等于q_last_[0]
 		qs[1] = q_last_[0]; // left arm
 		for (i = 0; i < 4; i++) {
-			q_->sol_flag[0 + i][0] = -1;
+			q_->sol_flag[0 + i][0] = -1;   //标志第一个轴的这种情况
 			q_->sol_flag[4 + i][0] = -1;
 		}
 	} else {
 		qs[0] = atan2f( P0_w[1],  P0_w[0]); // right arm   用来标识方向角，两个对称的方向角
-		qs[1] = atan2f(-P0_w[1], -P0_w[0]); // left arm    Axis1转动的两个对称的方位角，理论上都可以达到效果
+		qs[1] = atan2f(-P0_w[1], -P0_w[0]); // left arm    Axis1转动的两个对称的方位角，相距180度。
 		for (i = 0; i < 4; i++) {
 			q_->sol_flag[0 + i][0] =  1;
 			q_->sol_flag[4 + i][0] =  1;
@@ -246,30 +246,31 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 	for (ind_arm = 0; ind_arm < 2; ind_arm++) {     //对应上面两种情况，Axis1两种对称的位置。
 		// q2, q3 solution pair ///                 //三个循环的嵌套，从最外层的arm->elbow->wrist，相当于穷举，每个转动轴都有两个方向
 		cosqs = cosf(qs[ind_arm] + classic6dof_DH[0][0]); 
-		sinqs = sinf(qs[ind_arm] + classic6dof_DH[0][0]);
-
+		sinqs = sinf(qs[ind_arm] + classic6dof_DH[0][0]);  //下面这个变化仅仅和轴1的角度有关
+		printf("qs[%d]=%f\n",ind_arm,qs[ind_arm]);
 		R10[0] =  cosqs; R10[1] = sinqs; R10[2] =  0.0f;   //这是一个变基函数，将P0_w->P1_w，即将基地坐标系有零（基座标系）
-		R10[3] =   0.0f; R10[4] =  0.0f; R10[5] = -1.0f;	//变到{1}joint1。这样就能做坐标系{1}下进行加减运算
-		R10[6] = -sinqs; R10[7] = cosqs; R10[8] =  0.0f;
+		R10[3] =   0.0f; R10[4] =  0.0f; R10[5] = -1.0f;	//变到{1}joint1。这样就能做坐标系{1}下进行加减运算 》旋转矩阵为单位正交矩阵，求转置即为逆解《
+		R10[6] = -sinqs; R10[7] = cosqs; R10[8] =  0.0f;	//
 
-		matMultiply(R10, P0_w, P1_w, 3, 3, 1);   //这个R10是有问题的，为什么求了一个转置呢？？？
+		matMultiply(R10, P0_w, P1_w, 3, 3, 1);   
 		
 		for (i = 0; i < 3; i++) {
 			L1_sw[i] = P1_w[i] - L1_bs[i];   //把Lbs和dbs减去  L1_bs就是在坐标系{1}，原点和基座标系重合是，LBS和dbs组成的系统末端在{1}下的坐标
 		}
 		l_sw_2 = L1_sw[0]*L1_sw[0] + L1_sw[1]*L1_sw[1];
 		l_sw = sqrtf(l_sw_2);
-
-		if(fabs(l_se + l_ew - l_sw) <= 0.000001) {   //在一条直线上
+		printf("l_se=%f,l_ew=%f,l_sw=%f\n",l_se,l_ew,l_sw);
+		if(fabs(l_se + l_ew - l_sw) <= 0.001) {   //在一条直线上   PS: l_ew和Lew是不同的，是直角三角形里面的一个直角边和斜边
+			printf("在一条直线上，#1\n");
 			qa[0][0] = atan2f(L1_sw[1], L1_sw[0]);   //第二个关节角度
 			qa[1][0] = qa[0][0];                     //第二个关节的角度
-			printf("volcano\n");
-			qa[0][1] = 0.0f+atan_e;						 //修改过XXXX   第三个关节的角度  这个应该是有问题的？？？
-			qa[1][1] = 0.0f+atan_e;						 //第三个关节的角度
-			if (l_sw > l_se + l_ew) {                //为什么还是有大小的问题？？为什么还要区分大小？？
+			
+			qa[0][1] = 0.0f;						 
+			qa[1][1] = 0.0f;						 
+			if (l_sw > l_se + l_ew) {
 				for (i = 0; i < 2; i++) {
 					q_->sol_flag[4*ind_arm + 0 + i][1] = 0;  //根据ind_arm分成两组，每组有四个解，一共是八个解
-					q_->sol_flag[4*ind_arm + 2 + i][1] = 0;
+					q_->sol_flag[4*ind_arm + 2 + i][1] = 0;		//用于标识是否能组成三角形，即两边之和和第三遍的关系，若能组成三角形为1，若不符合三角形为0
 				}
 			} else {
 				for (i = 0; i < 2; i++) {
@@ -277,7 +278,8 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 1;
 				}
 			}
-		} else if(fabs(l_sw - fabs(l_se - l_ew)) <= 0.000001) {   //这是另一种在一条直线上的情况
+		} else if(fabs(l_sw - fabs(l_se - l_ew)) <= 0.001) {   //这是另一种在一条直线上的情况 位
+			printf("在一条直线上，#2\n");
 			qa[0][0] = atan2f(L1_sw[1], L1_sw[0]);
 			qa[1][0] = qa[0][0];
 			if (0 == ind_arm) { // right arm   要根据一轴的情况来确定3轴的角度。
@@ -289,7 +291,7 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 			}
 			if	(l_sw < fabs(l_se - l_ew)) {
 				for (i = 0; i < 2; i++) {
-					q_->sol_flag[4*ind_arm + 0 + i][1] = 0;
+					q_->sol_flag[4*ind_arm + 0 + i][1] = 0;//求axis2 3两个轴的，对第二个flag进行标记
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 0;
 				}
 			} else {
@@ -298,38 +300,39 @@ void classic6dofInvKine(Kine6d* pose_, float* q_last_, Kine6dSol* q_) //q_last�
 					q_->sol_flag[4*ind_arm + 2 + i][1] = 1;
 				}
 			}
-		} else {     //正常的不在一条直线上的情况
-			atan_a = atan2f(L1_sw[1], L1_sw[0]);
-			acos_a = 0.5f*(l_se_2 + l_sw_2 - l_ew_2) / (l_se*l_sw);
-			if	(acos_a >=  1.0f) acos_a = 0.0f;
+		} else {     //正常的不在一条直线上的情况，这种情况显然可以分成两种情况
+			printf("不在一条直线上\n");
+			atan_a = atan2f(L1_sw[1], L1_sw[0]); //注意和atan_e做出区分，这个值是l_sw与{1}的x轴的夹角，很可能是负值，搞清楚atan2f的使用方法
+			acos_a = 0.5f*(l_se_2 + l_sw_2 - l_ew_2) / (l_se*l_sw);  //这个是余弦定理   l_ew对应的角度
+			if	(acos_a >=  1.0f) acos_a = 0.0f;  //余弦的两种边界情况
 			else if	(acos_a <= -1.0f) acos_a = (float)M_PI;
-			else	acos_a = acosf(acos_a);
-			acos_e = 0.5f*(l_se_2 + l_ew_2 - l_sw_2) / (l_se*l_ew);
+			else	acos_a = acosf(acos_a);       //arcos,求出角度
+			acos_e = 0.5f*(l_se_2 + l_ew_2 - l_sw_2) / (l_se*l_ew);  //求出l_sw对应的角度余弦
 			if	(acos_e >=  1.0f) acos_e = 0.0f;
 			else if	(acos_e <= -1.0f) acos_e = (float)M_PI;
 			else	acos_e = acosf(acos_e);
-			if (0 == ind_arm) { // right arm
-				// above elbow
-				qa[0][0] = atan_a - acos_a + (float)M_PI_2;
-				qa[0][1] = atan_e - acos_e + (float)M_PI;
-				// below elbow
-				qa[1][0] = atan_a + acos_a + (float)M_PI_2;
-				qa[1][1] = atan_e + acos_e - (float)M_PI;
+			if (0 == ind_arm) { // right arm  代表在坐标系{1}中的右半部分，，，，
+				// above elbow		肘关节向上,三关节在l_sw的左侧
+				qa[0][0] = atan_a - acos_a + (float)M_PI_2;  //axis 3    
+				qa[0][1] = atan_e - acos_e + (float)M_PI;    //axis 4
+				// below elbow    //肘部在下方
+				qa[1][0] = atan_a + acos_a + (float)M_PI_2;   //axis3    应该是肘关节向下
+				qa[1][1] = atan_e + acos_e - (float)M_PI;	  //axis4
 
-			} else { // /////// // left arm
+			} else { // /////// // left arm   这种情况时，图形关于Y1轴对称
 				// above elbow
-				qa[0][0] = atan_a + acos_a + (float)M_PI_2;
+				qa[0][0] = atan_a + acos_a + (float)M_PI_2;   //肘部在上方
 				qa[0][1] = atan_e + acos_e - (float)M_PI;
-				// below elbow
+				// below elbow     这种情况是肘部在下方
 				qa[1][0] = atan_a - acos_a + (float)M_PI_2;
 				qa[1][1] = atan_e - acos_e + (float)M_PI;
 			}
 			for (i = 0; i < 2; i++) {
-				q_->sol_flag[4*ind_arm + 0 + i][1] = 1;
+				q_->sol_flag[4*ind_arm + 0 + i][1] = 1;  //这种情况肯定能组成三角形
 				q_->sol_flag[4*ind_arm + 2 + i][1] = 1;
 			}
 		}
-		// two elbow config. ////////
+		// two elbow config. ////////    肘部也是两种情况，肘部朝上或者肘部朝下
 		for (ind_elbow = 0; ind_elbow < 2; ind_elbow++) {
 			// q3,q4,q5 solution pair
 			cosqa[0] = cosf(qa[ind_elbow][0] + classic6dof_DH[1][0]); sinqa[0] = sinf(qa[ind_elbow][0] + classic6dof_DH[1][0]);
